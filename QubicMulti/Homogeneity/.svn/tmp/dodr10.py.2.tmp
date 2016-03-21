@@ -1,0 +1,408 @@
+import scipy.io
+from Cosmology import cosmology
+from Homogeneity import galtools
+from Homogeneity import fitting
+from scipy import integrate
+from scipy import interpolate
+from matplotlib import rc
+import copy
+import glob
+import pyfits
+rc('text', usetex=False)
+rc('font',**{'family':'sans-serif','sans-serif':['Helvetica']})
+import mpfit
+import iminuit
+
+# define z bins
+minz=0.43
+maxz=0.7
+nbins=5
+zedge=linspace(minz,maxz,nbins+1)
+
+
+
+
+
+# define fiducial cosmology
+cosmo=[0.27,0.73,-1,0,0.7]
+
+
+
+#dirbase='/Users/hamilton/SDSS/Data/DR10/LRG/'
+#dirbase='/Volumes/Data/SDSS/'
+dirbase='/Volumes/Data/SDSS/DR10/LRG/'
+
+fdnorth='CMASS-DR10_v6-N-Anderson.fits'
+fdsouth='CMASS-DR10_v6-S-Anderson.fits'
+frnorth='CMASS-DR10_v6-N-Anderson.ran.fits'
+frsouth='CMASS-DR10_v6-S-Anderson.ran.fits'
+
+ratiorandom=5.
+
+#### South
+data,hdr_data=pyfits.getdata(dirbase+fdsouth,header=True)
+wok=where(data.field('z')>minz)
+data=data[wok]
+wok=where(data.field('z')<maxz)
+data=data[wok]
+
+dataraS=data.field('RA')
+datadecS=data.field('DEC')
+datazS=data.field('z')
+data_wfkpS=data.field('WEIGHT_FKP')
+data_wcpS=data.field('WEIGHT_CP')
+data_wnozS=data.field('WEIGHT_NOZ')
+data_wstarS=data.field('WEIGHT_STAR')
+data_wS=data_wfkpS*data_wstarS*(data_wnozS+data_wcpS-1)
+
+
+rnd,hdr_data=pyfits.getdata(dirbase+frsouth,header=True)
+wok=where(rnd.field('z')>minz)
+rnd=rnd[wok]
+wok=where(rnd.field('z')<maxz)
+rnd=rnd[wok]
+rnd=rnd[0:size(dataraS)*ratiorandom]
+
+randomraS=rnd.field('RA')
+randomdecS=rnd.field('DEC')
+randomzS=rnd.field('z')
+random_wfkpS=rnd.field('WEIGHT_FKP')
+random_wS=random_wfkpS
+
+
+
+
+
+######### North
+data,hdr_data=pyfits.getdata(dirbase+fdnorth,header=True)
+wok=where(data.field('z')>minz)
+data=data[wok]
+wok=where(data.field('z')<maxz)
+data=data[wok]
+
+dataraN=data.field('RA')
+datadecN=data.field('DEC')
+datazN=data.field('z')
+data_wfkpN=data.field('WEIGHT_FKP')
+data_wcpN=data.field('WEIGHT_CP')
+data_wnozN=data.field('WEIGHT_NOZ')
+data_wstarN=data.field('WEIGHT_STAR')
+data_wN=data_wfkpN*data_wstarN*(data_wnozN+data_wcpN-1)
+
+
+rnd,hdr_data=pyfits.getdata(dirbase+frnorth,header=True)
+
+wok=where(rnd.field('z')>minz)
+rnd=rnd[wok]
+wok=where(rnd.field('z')<maxz)
+rnd=rnd[wok]
+rnd=rnd[0:size(dataraN)*ratiorandom]
+
+randomraN=rnd.field('RA')
+randomdecN=rnd.field('DEC')
+randomzN=rnd.field('z')
+random_wfkpN=rnd.field('WEIGHT_FKP')
+random_wN=random_wfkpN
+
+
+
+
+##### Homogeneity
+# define r bins
+rmin=1.
+rmax=200.
+nbins=50
+
+r,dd,rr,dr=galtools.paircount_data_random(dataraS,datadecS,datazS,randomraS,randomdecS,randomzS,cosmo,rmin,rmax,nbins,log=1,file='dr10South_pairs.txt',nproc=12)
+
+r,dd,rr,dr=galtools.paircount_data_random(dataraN,datadecN,datazN,randomraN,randomdecN,randomzN,cosmo,rmin,rmax,nbins,log=1,file='dr10North_pairs.txt',nproc=12)
+
+
+#weighted
+r,dd,rr,dr=galtools.paircount_data_random(dataraS,datadecS,datazS,randomraS,randomdecS,randomzS,cosmo,rmin,rmax,nbins,log=1,file='dr10South_pairs_weighted.txt',nproc=2,wdata=data_wS,wrandom=random_wS)
+
+r,dd,rr,dr=galtools.paircount_data_random(dataraN,datadecN,datazN,randomraN,randomdecN,randomzN,cosmo,rmin,rmax,nbins,log=1,file='dr10North_pairs_weighted.txt',nproc=14,wdata=data_wN,wrandom=random_wN)
+
+
+
+#### z bins
+# define r bins
+rmin=1.
+rmax=200.
+nbinsr=50
+
+bins=np.array(zeros(nbins),dtype='|S20')
+for i in arange(nbins):
+    bins[i]='z_'+str(zedge[i])+'_'+str(zedge[i+1])
+
+# South
+for i in arange(np.size(zedge)-1):
+    print(' ')
+    print(bins[i])
+    mini=zedge[i]
+    maxi=zedge[i+1]
+    wdata=where((datazS >= mini) & (datazS <= maxi))
+    wrandom=where((randomzS >= mini) & (randomzS <= maxi))
+    r,dd,rr,dr=galtools.paircount_data_random(dataraS[wdata],datadecS[wdata],datazS[wdata],randomraS[wrandom],randomdecS[wrandom],randomzS[wrandom],cosmo,rmin,rmax,nbinsr,log=1,file='dr10South_'+bins[i]+'_pairs_weighted.txt',nproc=8,wdata=data_wS,wrandom=random_wS)
+
+
+
+# North
+for i in arange(np.size(zedge)-1):
+    print(' ')
+    print(bins[i])
+    mini=zedge[i]
+    maxi=zedge[i+1]
+    wdata=where((datazN >= mini) & (datazN <= maxi))
+    wrandom=where((randomzN >= mini) & (randomzN <= maxi))
+    r,dd,rr,dr=galtools.paircount_data_random(dataraN[wdata],datadecN[wdata],datazN[wdata],randomraN[wrandom],randomdecN[wrandom],randomzN[wrandom],cosmo,rmin,rmax,nbinsr,log=1,file='dr10North_'+bins[i]+'_pairs_weighted.txt',nproc=16,wdata=data_wS,wrandom=random_wS)
+
+
+
+
+
+
+#### Analyse Data and Mocks
+datafileNorth='/Users/hamilton/SDSS/Homogeneity/dr10North_pairs_weighted.txt'
+datafileSouth='/Users/hamilton/SDSS/Homogeneity/dr10South_pairs_weighted.txt'
+mockdirNorth='/Users/hamilton/SDSS/Data/DR10/PTHaloMocks/Pairs_Log/North/'
+mockdirSouth='/Users/hamilton/SDSS/Data/DR10/PTHaloMocks/Pairs_Log/South/'
+
+rhs,drhs,valsrhs,chain_s,rr=galtools.getd2_datamocks(datafileSouth,mockdirSouth)
+rhn,drhn,valsrhn,chain_n,rr=galtools.getd2_datamocks(datafileNorth,mockdirNorth)
+rha,drha,valsrha,chain_a,rr=galtools.getd2_datamocks([datafileNorth,datafileSouth],[mockdirNorth,mockdirSouth],combine=True)
+
+
+
+
+
+#### test fitting with minuit and MCMC
+rd,d2_r,covmatd2,rhd2=galtools.read_datamocks(datafileNorth,mockdirNorth)
+x=rd
+y=d2_r
+cov=covmatd2
+
+# get desired sub array
+xstart=30
+xstop=200
+w=np.where((x >= xstart) & (x <= xstop))
+thex=x[w]
+they=y[w]
+theyerr=np.sqrt(cov[w[0],w[0]])
+thecov=(cov[w[0],:])[:,w[0]]
+theinvcov=np.array(np.matrix(thecov).I)
+theinvcovdiag=zeros((np.size(w),np.size(w)))
+theinvcovdiag[np.arange(np.size(w)),np.arange(np.size(w))]=1./theyerr**2
+
+poldeg=6
+clf()
+plot(arange(200),zeros(200)+2.97,'--')
+errorbar(thex,they,yerr=theyerr,fmt='ro')
+
+
+### do the fits (Minuit and emcee)
+guess=np.polyfit(thex, they, poldeg)
+
+
+chain,parfit_mc,errfit_mc,covar_mc=fitting.dothefit(thex,they,thecov,guess,method='mcmc')
+pol_mc=np.poly1d(parfit_mc)
+plot(thex,pol_mc(thex),label='MCMC',lw=3,color='b')
+
+<<<<<<< .mine
+######## Fitting with MPFIT
+def chipoly_svd(pars, fjac=None, x=None, y=None, svdvals=None, v=None):
+    pol=np.poly1d(pars)
+    model = pol(x)
+    status = 1
+    resid=dot(v, y-model)/sqrt(svdvals)
+    print('pars',pars)
+    print('chi2=',np.sum(resid**2))
+    print('')
+    return([status,resid])
+=======
+m,parfit_m,errfit_m,covar_m=fitting.dothefit(thex,they,thecov,guess,method='minuit')
+pol_m=np.poly1d(parfit_m)
+plot(thex,pol_m(thex),label='Minuit',lw=3,ls='--',color='g')
+>>>>>>> .r1450
+
+<<<<<<< .mine
+# Fitting with covariance matrix
+u,s,v=linalg.svd(thecov)
+fa={'x':double(newx),'y':double(they),'svdvals':double(s),'v':v}
+mpfsvd = mpfit.mpfit(chipoly_svd, p0, functkw=fa)
+if (mpfsvd.status <= 0): print 'error message = ', mpfsvd.errmsg
+print 'parameters = ', mpfsvd.params
+print 'Covariance = ', mpfsvd.covar
+print('Status of the Fit',mpfsvd.status)
+print('Chi2=',mpfsvd.fnorm)
+print('ndf=',mpfsvd.dof)
+h=poly1d(mpfsvd.params)
+resid=chipoly_svd(mpfsvd.params,x=newx,y=they,svdvals=s,v=v)
+thechi2=np.sum(resid[1]**2)
+clf()
+errorbar(thex,they,yerr=theyerr,fmt='ro')
+plot(thex,h(thex/deltax),label='MPFIT Full Covariance with SVD')
+legend(loc='lower right')
+=======
+#chain,parfit_mc,errfit_mc,covar_mc=fitting.do_emcee(thex,they,thecov,guess)
+#pol_mc=np.poly1d(parfit_mc)
+#plot(thex,pol_mc(thex),label='MCMC',lw=3,color='b')
+>>>>>>> .r1450
+
+#m,parfit_m,errfit_m,covar_m=fitting.do_minuit(thex,they,thecov,guess)
+#pol_m=np.poly1d(parfit_m)
+#plot(thex,pol_m(thex),label='Minuit',lw=3,ls='--',color='g')
+
+#### rh from MCMC
+allrh=np.zeros(chain.shape[0])
+for i in arange(chain.shape[0]):
+    pp=np.poly1d(chain[i,:])
+    roots=(pp-2.97).r
+    wok=where((np.imag(roots) == 0) & (roots > np.min(thex)) & (roots < np.max(thex)))
+    allrh[i]=np.min(np.real(roots[wok]).flatten())
+
+rh_mcmc=np.mean(allrh)
+drh_mcmc=np.std(allrh)
+
+#### rh from Minuit
+# Value
+roots=(pol_m-2.97).r
+wok=where((np.imag(roots) == 0) & (roots > np.min(thex)) & (roots < np.max(thex)))
+therh=np.min(np.real(roots[wok]).flatten())
+# Error
+# derivative w.r.t. coefficients
+thepartial=np.zeros(np.size(parfit_m))
+for i in arange(np.size(parfit_m)):
+    pval=linspace(parfit_m[0]-2*errfit_m[0],parfit_m[0]+errfit_m[1],2)
+    yyy=zeros(np.size(pval))
+    for j in arange(np.size(pval)):
+        thepars=np.copy(parfit_m)
+        thepars[i]=pval[j]
+        pp=np.poly1d(thepars)
+        yyy[j]=pp(therh)
+
+    thepartial[i]=np.diff(yyy)/np.diff(pval)
+
+dot(dot(thepartial,covar_m),thepartial)
+
+err_on_funct=np.sqrt(dot(dot(thepartial,covar_m),thepartial))
+
+derpol=pol_m.deriv()
+rh_m=therh
+drh_m=err_on_funct/derpol(therh)
+
+clf()
+xv=linspace(min(thex),max(thex),1000)
+plot(arange(200),zeros(200)+2.97,'--')
+errorbar(thex,they,yerr=theyerr,fmt='ko')
+plot(xv,pol_mc(xv),label='MCMC',color='b')
+plot(xv,pol_m(xv),label='Minuit',ls='--',color='r')
+errorbar(rh_mcmc,2.97,xerr=drh_mcmc,label='rh MCMC',fmt='bo')
+errorbar(rh_m,2.97,xerr=drh_m,label='rh Minuit',fmt='ro')
+legend(loc='lower right')
+
+
+#################### with z bins ###############################
+# define z bins
+minz=0.43
+maxz=0.7
+nbins=5
+zedge=linspace(minz,maxz,nbins+1)
+bins=np.array(zeros(nbins),dtype='|S20')
+for i in arange(nbins):
+    bins[i]='z_'+str(zedge[i])+'_'+str(zedge[i+1])
+
+datafileNorth=[]
+datafileSouth=[]
+mockdirNorth=[]
+mockdirSouth=[]
+for i in bins:
+    datafileNorth.append('/Users/hamilton/SDSS/Homogeneity/dr10North_'+np.str(i)+'_pairs_weighted.txt')
+    datafileSouth.append('/Users/hamilton/SDSS/Homogeneity/dr10South_'+np.str(i)+'_pairs_weighted.txt')
+    mockdirNorth.append('/Volumes/Data/SDSS/DR10/PTHaloMocks/Pairs_Log_Zbins/'+np.str(i)+'/North/')
+    mockdirSouth.append('/Volumes/Data/SDSS/DR10/PTHaloMocks/Pairs_Log_Zbins/'+np.str(i)+'/South/')
+
+
+rhs=np.zeros(nbins)
+drhs=np.zeros(nbins)
+mockrhs=np.zeros(nbins)
+for i in arange(nbins):
+    rhs[i],drhs[i],valsrhs,chain_s,mockrhs[i]=galtools.getd2_datamocks(datafileSouth[i],mockdirSouth[i])
+
+
+
+rhn=np.zeros(nbins)
+drhn=np.zeros(nbins)
+mockrhn=np.zeros(nbins)
+for i in arange(nbins):
+    rhn[i],drhn[i],valsrhn,chain_n,mockrhn[i]=galtools.getd2_datamocks(datafileNorth[i],mockdirNorth[i])
+
+
+ms=np.loadtxt('mean_rhs_mocks.txt')
+mn=np.loadtxt('mean_rhn_mocks.txt')
+
+dz=zeros(nbins)+(zedge[1]-zedge[0])/2
+zmid=(zedge[arange(nbins)]+zedge[arange(nbins)+1])/2
+clf()
+xlabel('z')
+ylabel('$r_H(r)$ [$h^{-1}.\mathrm{Mpc}$]')
+errorbar(zmid,rhs,xerr=dz,yerr=drhs,fmt='ro',label='South')
+errorbar(zmid,rhn,xerr=dz,yerr=drhn,fmt='bo',label='North')
+legend()
+
+plot(zmid,ms[:,0],color='r')
+plot(zmid,mn[:,0],color='b')
+
+
+
+
+
+### need to do the MCMC on mocks
+nmocks=100
+
+#North
+rhn_mocks=np.zeros((nbins,nmocks))
+drhn_mocks=np.zeros((nbins,nmocks))
+for i in arange(nbins):
+    print(bins[i])
+    allmocks=glob.glob(mockdirNorth[i]+'pairs_*.txt')
+    indices=(rand(nmocks)*np.size(allmocks)).astype('int')
+    num=0
+    for j in indices:
+        print(allmocks[j])
+        rhn_mocks[i,num],drhn_mocks[i,num],a,b,c=galtools.getd2_datamocks(allmocks[j],mockdirNorth[i])
+        num=num+1
+
+mean_rhn_mocks=zeros(nbins)
+sig_rhn_mocks=zeros(nbins)
+for i in arange(nbins):
+    mean_rhn_mocks[i],sig_rhn_mocks[i]=galtools.meancut(rhn_mocks[i,:])
+
+#South
+rhs_mocks=np.zeros((nbins,nmocks))
+drhs_mocks=np.zeros((nbins,nmocks))
+for i in arange(nbins):
+    print(bins[i])
+    allmocks=glob.glob(mockdirSouth[i]+'pairs_*.txt')
+    indices=(rand(nmocks)*np.size(allmocks)).astype('int')
+    num=0
+    for j in indices:
+        print(allmocks[j])
+        rhs_mocks[i,num],drhs_mocks[i,num],a,b,c=galtools.getd2_datamocks(allmocks[j],mockdirSouth[i])
+        num=num+1
+
+mean_rhs_mocks=zeros(nbins)
+sig_rhs_mocks=zeros(nbins)
+for i in arange(nbins):
+    mean_rhs_mocks[i],sig_rhs_mocks[i]=galtools.meancut(rhs_mocks[i,:])
+
+
+
+
+
+
+
+
+
+
+
